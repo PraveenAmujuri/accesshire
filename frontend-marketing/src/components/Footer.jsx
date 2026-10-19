@@ -9,11 +9,11 @@ export default function Footer() {
           <div>
             <span className="text-white font-bold text-lg">AccessHire AI</span>
             <p className="text-xs text-slate-400 mt-1">
-              Final-Year B.Tech AI & ML Project — Agentic AI-Powered Accessible Mock Interview Platform.
+              Accessible mock interview platform with adaptive question practice.
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>Built with adaptive closed-loop decision orchestration</span>
+            <span>Adaptive interview practice</span>
             <span>•</span>
             <span className="flex items-center gap-1">Designed for Accessibility <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" /></span>
           </div>

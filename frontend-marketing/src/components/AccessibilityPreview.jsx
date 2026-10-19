@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Eye, Type, HelpCircle, Volume2, CheckCircle2, Mic, Clock, Sparkles } from 'lucide-react';
+import { Eye, HelpCircle, Volume2, CheckCircle2, Mic, Clock, Sparkles } from 'lucide-react';
 
 export default function AccessibilityPreview() {
   const [highContrast, setHighContrast] = useState(false);
@@ -7,7 +7,7 @@ export default function AccessibilityPreview() {
   const [simplified, setSimplified] = useState(false);
   const [activeTab, setActiveTab] = useState('intellectual');
 
-  const standardQuestion = "Can you articulate how the Python Global Interpreter Lock (GIL) orchestrates thread synchronization during CPU-bound bytecode execution as opposed to I/O-bound concurrency?";
+  const standardQuestion = "Can you describe how the Python Global Interpreter Lock (GIL) affects thread execution for CPU-bound tasks compared to I/O-bound tasks?";
   const simplifiedQuestion = "What does Python's GIL do, and how is using threads different for CPU tasks versus waiting for network or disk tasks?";
 
   const accommodationTabs = [
@@ -16,9 +16,9 @@ export default function AccessibilityPreview() {
       label: 'Intellectual Needs',
       badge: 'Cognitive Clarity',
       points: [
-        'Plain-language question simplification toggle',
-        'Structured, step-by-step conceptual breakdowns',
-        'Extended response deliberation without stressful timers'
+        'Option to view simplified, plain-language question phrasing',
+        'Structured, step-by-step conceptual questions',
+        'Extended response deliberation without stressful countdown timers'
       ]
     },
     {
@@ -26,9 +26,9 @@ export default function AccessibilityPreview() {
       label: 'Autism Spectrum (ASD)',
       badge: 'Predictability & Focus',
       points: [
-        'Direct, unambiguous questions without confusing idioms',
-        'Transparent interview state and remaining question tracker',
-        'Low-stimulation UI with clear visual boundaries'
+        'Direct, unambiguous questions without idioms or metaphors',
+        'Clear progress indicators showing remaining interview topics',
+        'Clean, low-distraction interface with structured visual boundaries'
       ]
     },
     {
@@ -36,9 +36,9 @@ export default function AccessibilityPreview() {
       label: 'Deaf / Hard of Hearing',
       badge: 'Visual Parity',
       points: [
-        'Live real-time captions for every spoken prompt',
-        '100% text parity: every audio question is rendered in text',
-        'Clear visual status badges for recording, evaluating, and next turns'
+        'Captions and on-screen text for all spoken questions',
+        'Full text parity: every audio question is rendered in readable text',
+        'Visual status badges for recording, evaluating, and next turns'
       ]
     },
     {
@@ -46,9 +46,9 @@ export default function AccessibilityPreview() {
       label: 'Speech Disabilities',
       badge: 'Communication Aware',
       points: [
-        'Flexible choice between voice dictation and typed text input',
-        'Pause-tolerant speech processing (does not cut off mid-thought)',
-        'Evaluation algorithm does not penalize stuttering, pauses, or filler words'
+        'Choice between voice dictation and typed text responses',
+        'Designed for pause-tolerant speech input without mid-sentence cutoffs',
+        'Evaluation designed to assess technical substance rather than speech fluency'
       ]
     }
   ];
@@ -62,7 +62,7 @@ export default function AccessibilityPreview() {
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-indigo-600" />
-            Live Accessibility Simulator:
+            Interactive Accessibility Preview (Example):
           </span>
         </div>
 
@@ -119,7 +119,7 @@ export default function AccessibilityPreview() {
         </div>
       </div>
 
-      {/* Simulated Live Interview Question Card */}
+      {/* Simulated Interview Question Card */}
       <div
         className={`p-6 sm:p-8 rounded-3xl border transition-all duration-200 shadow-lg ${
           highContrast
@@ -132,7 +132,7 @@ export default function AccessibilityPreview() {
             <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
               highContrast ? 'bg-amber-400 text-black' : 'bg-indigo-100 text-indigo-700'
             }`}>
-              Turn 2 of 6 • Python Internals
+              Sample Turn • Python Internals
             </span>
             <span className={`text-xs font-semibold ${highContrast ? 'text-amber-200' : 'text-slate-500'}`}>
               Difficulty: Medium
@@ -164,7 +164,7 @@ export default function AccessibilityPreview() {
             <div className={`p-3 rounded-xl text-xs font-medium ${
               highContrast ? 'bg-zinc-900 border border-amber-400 text-amber-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
             }`}>
-              ✓ Plain English wording active. Technical expectation remains unchanged: candidate must explain GIL and process vs thread concurrency.
+              Example of simplified wording. Technical expectations remain the same: candidate explains the GIL and thread vs process differences.
             </div>
           )}
         </div>
@@ -173,10 +173,10 @@ export default function AccessibilityPreview() {
         <div className="pt-4 border-t border-dashed border-slate-200 dark:border-amber-400/30 flex flex-wrap items-center justify-between text-xs gap-3">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1.5 opacity-80">
-              <Mic className="w-3.5 h-3.5 text-emerald-500" /> Pause-tolerant speech recognition ready
+              <Mic className="w-3.5 h-3.5 text-emerald-500" /> Planned: Pause-tolerant speech input
             </span>
             <span className="flex items-center gap-1.5 opacity-80">
-              <Clock className="w-3.5 h-3.5 text-indigo-500" /> Untimed deliberation active
+              <Clock className="w-3.5 h-3.5 text-indigo-500" /> Untimed mode preview
             </span>
           </div>
           <span className="opacity-70 font-mono text-[11px]">Alt+S to Submit • Alt+R to Repeat</span>
@@ -186,9 +186,9 @@ export default function AccessibilityPreview() {
       {/* Target Audience Accommodations Matrix */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
         <div className="space-y-1">
-          <h3 className="text-xl font-bold text-slate-900">Configurable Accommodations for 4 Diverse Groups</h3>
+          <h3 className="text-xl font-bold text-slate-900">Accessibility Support for Common Needs</h3>
           <p className="text-sm text-slate-600">
-            AccessHire AI avoids universal, untested claims. Instead, it provides specific, functional accommodations for four targeted accessibility groups.
+            AccessHire AI includes configurable settings designed to support common cognitive, sensory, and communication preferences:
           </p>
         </div>
 

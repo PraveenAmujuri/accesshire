@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 export default function Navbar() {
   return (
@@ -15,7 +15,7 @@ export default function Navbar() {
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
           <Link to="/" className="hover:text-indigo-600 transition-colors focus:ring-2 focus:ring-indigo-600 rounded px-2 py-1">Home</Link>
           <Link to="/features" className="hover:text-indigo-600 transition-colors focus:ring-2 focus:ring-indigo-600 rounded px-2 py-1">Features</Link>
-          <Link to="/about" className="hover:text-indigo-600 transition-colors focus:ring-2 focus:ring-indigo-600 rounded px-2 py-1">Research & Architecture</Link>
+          <Link to="/about" className="hover:text-indigo-600 transition-colors focus:ring-2 focus:ring-indigo-600 rounded px-2 py-1">Architecture</Link>
         </nav>
         <div className="flex items-center gap-3">
           <a
