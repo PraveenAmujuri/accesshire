@@ -39,7 +39,7 @@ async def start_interview_session(
     payload: InterviewSessionCreate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Creates and persists a new mock interview session."""
+    """Creates and persists a new mock interview session for the authenticated user."""
     user_id = current_user.get("id", "dev_candidate")
     return await InterviewService.create_session(payload, user_id=user_id)
 
@@ -47,7 +47,7 @@ async def start_interview_session(
 async def list_interviews(
     current_user: dict = Depends(get_current_user)
 ):
-    """Lists past and current interview sessions for the logged-in candidate."""
+    """Lists past and current interview sessions for the authenticated candidate."""
     user_id = current_user.get("id", "dev_candidate")
     return await InterviewService.list_user_sessions(user_id=user_id)
 
@@ -56,16 +56,18 @@ async def get_interview_session(
     interview_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Retrieves session metadata, status, and turn progress."""
-    return await InterviewService.get_session(interview_id)
+    """Retrieves session metadata, status, and turn progress with ownership verification."""
+    user_id = current_user.get("id", "dev_candidate")
+    return await InterviewService.get_session(interview_id, user_id=user_id)
 
 @router.get("/{interview_id}/current-question", response_model=QuestionResponse)
 async def get_current_question(
     interview_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Retrieves the active question for the current turn."""
-    return await InterviewService.get_current_question(interview_id)
+    """Retrieves active question for current turn with ownership verification."""
+    user_id = current_user.get("id", "dev_candidate")
+    return await InterviewService.get_current_question(interview_id, user_id=user_id)
 
 @router.post("/{interview_id}/submit-answer", response_model=SubmitAnswerResponse)
 async def submit_answer(
@@ -74,15 +76,17 @@ async def submit_answer(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Records candidate answer, prevents duplicate submissions,
-    and advances interview state to the next turn or marks completion.
+    Records candidate answer, protects against concurrent and duplicate submissions,
+    and advances interview state with ownership verification.
     """
-    return await InterviewService.submit_answer(interview_id, payload)
+    user_id = current_user.get("id", "dev_candidate")
+    return await InterviewService.submit_answer(interview_id, payload, user_id=user_id)
 
 @router.post("/{interview_id}/end", response_model=SessionDetailResponse)
 async def end_interview(
     interview_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Concludes the interview session prematurely."""
-    return await InterviewService.end_session(interview_id)
+    """Concludes the interview session prematurely with ownership verification."""
+    user_id = current_user.get("id", "dev_candidate")
+    return await InterviewService.end_session(interview_id, user_id=user_id)

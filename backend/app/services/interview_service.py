@@ -1,4 +1,5 @@
-﻿import uuid
+import uuid
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
@@ -20,18 +21,52 @@ logger = logging.getLogger("accesshire.interviews")
 # In-memory storage fallback when MongoDB is running in offline/disconnected mode
 _in_memory_sessions: Dict[str, Dict[str, Any]] = {}
 
+# Session concurrency lock registry to prevent race conditions on simultaneous answer submissions
+_session_locks: Dict[str, asyncio.Lock] = {}
+_locks_guard = asyncio.Lock()
+
 class InterviewService:
     """
     Core Interview Service:
     - Handles interview session creation, persistence, state tracking, and progression.
     - Persists to MongoDB when available; seamlessly falls back to memory repository in offline/test mode.
-    - Guards against duplicate submissions, empty answers, and invalid turn state transitions.
-    - Provides clean modular hooks where the 7 AI agents and LangGraph state engine will plug in.
+    - Strictly checks session ownership against the authenticated user on every operation.
+    - Protects against concurrent submissions using per-session async locks and status checks.
+    - Exposes transparent storage mode information (mongodb vs in_memory_fallback).
     """
 
     @staticmethod
     def _now_iso() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    @classmethod
+    def get_storage_mode(cls) -> str:
+        """Returns the active storage backend identifier."""
+        if db_instance.client is not None and db_instance.db is not None:
+            return "mongodb"
+        return "in_memory_fallback"
+
+    @classmethod
+    async def _get_session_lock(cls, session_id: str) -> asyncio.Lock:
+        """Acquires or creates an async lock for the given session to prevent race conditions."""
+        async with _locks_guard:
+            if session_id not in _session_locks:
+                _session_locks[session_id] = asyncio.Lock()
+            return _session_locks[session_id]
+
+    @classmethod
+    def _verify_ownership(cls, session: Dict[str, Any], user_id: str) -> None:
+        """Verifies that the session belongs to the requesting authenticated user."""
+        session_owner = session.get("user_id")
+        if session_owner != user_id:
+            logger.warning(
+                "Access denied: User '%s' attempted to access session '%s' owned by '%s'",
+                user_id, session.get("session_id"), session_owner
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You do not have permission to access this interview session."
+            )
 
     @classmethod
     def _generate_baseline_questions(
@@ -42,13 +77,11 @@ class InterviewService:
     ) -> List[Dict[str, Any]]:
         """
         Generates baseline questions for the interview flow based on job role.
-        NOTE: This is the dedicated modular integration point for Agent 1 (Candidate & Job Analysis),
-        Agent 2 (Interview Planner), and Agent 4 (Question Generation with RAG) in subsequent phases.
+        Dedicated integration point for Agent 1, Agent 2, and Agent 4 in subsequent phases.
         """
         title_lower = job_title.lower()
         desc_lower = job_description.lower()
 
-        # Tailor domain topics based on role context
         if "python" in title_lower or "python" in desc_lower:
             topics = [
                 {
@@ -148,7 +181,6 @@ class InterviewService:
         db = db_instance.db
         if db is not None:
             try:
-                # Update in MongoDB
                 await db.interview_sessions.replace_one(
                     {"session_id": session["session_id"]},
                     session,
@@ -213,7 +245,11 @@ class InterviewService:
         }
 
         await cls._save_session(session_doc)
-        logger.info("Created interview session %s for user %s with %d questions", session_id, user_id, len(questions))
+        storage_mode = cls.get_storage_mode()
+        logger.info(
+            "Created interview session %s for user %s with %d questions (storage: %s)",
+            session_id, user_id, len(questions), storage_mode
+        )
 
         return SessionDetailResponse(
             session_id=session_id,
@@ -227,17 +263,20 @@ class InterviewService:
             created_at=now,
             updated_at=now,
             is_completed=False,
+            storage_mode=storage_mode,
         )
 
     @classmethod
-    async def get_session(cls, session_id: str) -> SessionDetailResponse:
-        """Fetches session metadata."""
+    async def get_session(cls, session_id: str, user_id: str) -> SessionDetailResponse:
+        """Fetches session metadata with ownership verification."""
         session = await cls._find_session(session_id)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Interview session '{session_id}' not found."
             )
+
+        cls._verify_ownership(session, user_id)
 
         is_completed = session["status"] == "completed" or session["current_turn"] > session["total_questions"]
         return SessionDetailResponse(
@@ -252,17 +291,20 @@ class InterviewService:
             created_at=session["created_at"],
             updated_at=session["updated_at"],
             is_completed=is_completed,
+            storage_mode=cls.get_storage_mode(),
         )
 
     @classmethod
-    async def get_current_question(cls, session_id: str) -> QuestionResponse:
-        """Retrieves the active question for the current turn."""
+    async def get_current_question(cls, session_id: str, user_id: str) -> QuestionResponse:
+        """Retrieves active question for the current turn with ownership verification."""
         session = await cls._find_session(session_id)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Interview session '{session_id}' not found."
             )
+
+        cls._verify_ownership(session, user_id)
 
         if session["status"] == "completed":
             raise HTTPException(
@@ -273,10 +315,8 @@ class InterviewService:
         current_turn = session["current_turn"]
         questions = session.get("questions", [])
 
-        # Find the question for the current turn
         matched_q = next((q for q in questions if q["turn_index"] == current_turn), None)
         if not matched_q:
-            # All questions finished
             session["status"] = "completed"
             await cls._save_session(session)
             raise HTTPException(
@@ -302,25 +342,13 @@ class InterviewService:
     async def submit_answer(
         cls,
         session_id: str,
-        payload: CandidateAnswerSubmit
+        payload: CandidateAnswerSubmit,
+        user_id: str
     ) -> SubmitAnswerResponse:
         """
         Validates, records candidate answer, and transitions the session state to the next question.
-        Guards against duplicate submissions and invalid state.
+        Guards against concurrent submissions, duplicate submissions, and cross-user access.
         """
-        session = await cls._find_session(session_id)
-        if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Interview session '{session_id}' not found."
-            )
-
-        if session["status"] == "completed":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot submit answer: this interview session is already completed."
-            )
-
         trimmed_answer = payload.answer_text.strip()
         if not trimmed_answer:
             raise HTTPException(
@@ -328,88 +356,119 @@ class InterviewService:
                 detail="Answer text cannot be blank."
             )
 
-        current_turn = session["current_turn"]
-        questions = session.get("questions", [])
+        # Acquire concurrency lock for this session
+        session_lock = await cls._get_session_lock(session_id)
 
-        # Find the question for the current turn
-        active_q = next((q for q in questions if q["turn_index"] == current_turn), None)
-        if not active_q:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"No active question found for turn {current_turn}."
-            )
-
-        # Accidental duplicate submission check
-        if active_q["status"] == "answered":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"An answer has already been submitted for turn {current_turn}."
-            )
-
-        # If question_id was provided, verify it matches the active question
-        if payload.question_id and payload.question_id != active_q["question_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Submitted question ID '{payload.question_id}' does not match active question '{active_q['question_id']}'."
-            )
-
-        # Record the answer
-        active_q["status"] = "answered"
-        active_q["candidate_answer"] = trimmed_answer
-        active_q["answered_at"] = cls._now_iso()
-
-        total_questions = len(questions)
-        is_completed = current_turn >= total_questions
-
-        if is_completed:
-            session["status"] = "completed"
-            session["completed_at"] = cls._now_iso()
-            await cls._save_session(session)
-            logger.info("Session %s completed after %d questions.", session_id, total_questions)
-            return SubmitAnswerResponse(
-                session_id=session_id,
-                turn_index=current_turn,
-                status="completed",
-                is_completed=True,
-                next_turn=None,
-                message="Final answer recorded. Interview session completed.",
-                next_question=None,
-            )
-        else:
-            # Advance to the next question
-            session["current_turn"] = current_turn + 1
-            await cls._save_session(session)
-
-            next_q = next((q for q in questions if q["turn_index"] == session["current_turn"]), None)
-            next_q_resp = None
-            if next_q:
-                next_q_resp = QuestionResponse(
-                    question_id=next_q["question_id"],
-                    turn_index=next_q["turn_index"],
-                    total_turns=total_questions,
-                    topic_id=next_q["topic_id"],
-                    topic_name=next_q["topic_name"],
-                    question_text=next_q["question_text"],
-                    simplified_question_text=next_q.get("simplified_question_text"),
-                    difficulty=next_q["difficulty"],
-                    action_type="NEW_QUESTION",
-                    is_last_question=session["current_turn"] >= total_questions,
+        async with session_lock:
+            # Re-fetch latest session state inside the critical section
+            session = await cls._find_session(session_id)
+            if not session:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Interview session '{session_id}' not found."
                 )
 
-            logger.info("Session %s advanced to turn %d.", session_id, session["current_turn"])
-            return SubmitAnswerResponse(
-                session_id=session_id,
-                turn_index=current_turn,
-                status="in_progress",
-                is_completed=False,
-                next_turn=session["current_turn"],
-                message="Answer recorded. Proceeding to next question.",
-                next_question=next_q_resp,
-            )
+            cls._verify_ownership(session, user_id)
+
+            if session["status"] == "completed":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot submit answer: this interview session is already completed."
+                )
+
+            current_turn = session["current_turn"]
+            questions = session.get("questions", [])
+
+            active_q = next((q for q in questions if q["turn_index"] == current_turn), None)
+            if not active_q:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No active question found for turn {current_turn}."
+                )
+
+            # Check if submitted question was already answered in this session
+            if payload.question_id:
+                matching_q = next((q for q in questions if q.get("question_id") == payload.question_id), None)
+                if matching_q and matching_q.get("status") == "answered":
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"An answer has already been submitted for question '{payload.question_id}'."
+                    )
+                if matching_q and matching_q.get("question_id") != active_q["question_id"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Submitted question ID '{payload.question_id}' does not match active question '{active_q['question_id']}'."
+                    )
+
+            # Concurrent & duplicate submission guard for active turn
+            if active_q["status"] == "answered":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"An answer has already been submitted for turn {current_turn}."
+                )
+
+            if payload.question_id and payload.question_id != active_q["question_id"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Submitted question ID '{payload.question_id}' does not match active question '{active_q['question_id']}'."
+                )
+
+            # Record answer atomically
+            active_q["status"] = "answered"
+            active_q["candidate_answer"] = trimmed_answer
+            active_q["answered_at"] = cls._now_iso()
+
+            total_questions = len(questions)
+            is_completed = current_turn >= total_questions
+
+            if is_completed:
+                session["status"] = "completed"
+                session["completed_at"] = cls._now_iso()
+                await cls._save_session(session)
+                logger.info("Session %s completed after %d questions.", session_id, total_questions)
+                return SubmitAnswerResponse(
+                    session_id=session_id,
+                    turn_index=current_turn,
+                    status="completed",
+                    is_completed=True,
+                    next_turn=None,
+                    message="Final answer recorded. Interview session completed.",
+                    next_question=None,
+                )
+            else:
+                session["current_turn"] = current_turn + 1
+                await cls._save_session(session)
+
+                next_q = next((q for q in questions if q["turn_index"] == session["current_turn"]), None)
+                next_q_resp = None
+                if next_q:
+                    next_q_resp = QuestionResponse(
+                        question_id=next_q["question_id"],
+                        turn_index=next_q["turn_index"],
+                        total_turns=total_questions,
+                        topic_id=next_q["topic_id"],
+                        topic_name=next_q["topic_name"],
+                        question_text=next_q["question_text"],
+                        simplified_question_text=next_q.get("simplified_question_text"),
+                        difficulty=next_q["difficulty"],
+                        action_type="NEW_QUESTION",
+                        is_last_question=session["current_turn"] >= total_questions,
+                    )
+
+                logger.info("Session %s advanced to turn %d.", session_id, session["current_turn"])
+                return SubmitAnswerResponse(
+                    session_id=session_id,
+                    turn_index=current_turn,
+                    status="in_progress",
+                    is_completed=False,
+                    next_turn=session["current_turn"],
+                    message="Answer recorded. Proceeding to next question.",
+                    next_question=next_q_resp,
+                )
 
     @classmethod
-    async def end_session(cls, session_id: str) -> SessionDetailResponse:
-        """Concludes an interview session prematurely."""
+    async def end_session(cls, session_id: str, user_id: str) -> SessionDetailResponse:
+        """Concludes an interview session prematurely with ownership verification."""
         session = await cls._find_session(session_id)
         if not session:
             raise HTTPException(
@@ -417,10 +476,12 @@ class InterviewService:
                 detail=f"Interview session '{session_id}' not found."
             )
 
+        cls._verify_ownership(session, user_id)
+
         session["status"] = "completed"
         session["completed_at"] = cls._now_iso()
         await cls._save_session(session)
-        logger.info("Session %s ended by candidate.", session_id)
+        logger.info("Session %s ended early by user %s.", session_id, user_id)
 
         return SessionDetailResponse(
             session_id=session["session_id"],
@@ -434,6 +495,7 @@ class InterviewService:
             created_at=session["created_at"],
             updated_at=session["updated_at"],
             is_completed=True,
+            storage_mode=cls.get_storage_mode(),
         )
 
     @classmethod
@@ -473,14 +535,16 @@ class InterviewService:
         return results
 
     @classmethod
-    async def get_session_report(cls, session_id: str) -> SessionReportResponse:
-        """Retrieves session report and transcript."""
+    async def get_session_report(cls, session_id: str, user_id: str) -> SessionReportResponse:
+        """Retrieves session report and transcript with ownership verification."""
         session = await cls._find_session(session_id)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Interview session '{session_id}' not found."
             )
+
+        cls._verify_ownership(session, user_id)
 
         questions = session.get("questions", [])
         transcript: List[TranscriptTurnItem] = []
@@ -502,6 +566,7 @@ class InterviewService:
         is_completed = session["status"] == "completed"
         return SessionReportResponse(
             session_id=session_id,
+            user_id=session["user_id"],
             job_title=session["job_title"],
             status=session["status"],
             total_questions=len(questions),
@@ -511,4 +576,5 @@ class InterviewService:
             transcript=transcript,
             created_at=session["created_at"],
             completed_at=session.get("completed_at"),
+            storage_mode=cls.get_storage_mode(),
         )

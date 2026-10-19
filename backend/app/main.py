@@ -56,10 +56,13 @@ async def health_check():
         except Exception:
             db_connected = False
 
+    storage_backend = "mongodb" if db_connected else "in_memory_fallback"
+
     return {
         "status": "healthy",
         "project": settings.PROJECT_NAME,
         "database_connected": db_connected,
+        "storage_backend": storage_backend,
         "llm_provider": settings.LLM_PROVIDER,
         "version": "0.1.0"
     }

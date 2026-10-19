@@ -10,5 +10,6 @@ async def get_interview_report(
     interview_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Retrieves session report and complete turn-by-turn question/answer transcript."""
-    return await InterviewService.get_session_report(interview_id)
+    """Retrieves session report and transcript with ownership verification."""
+    user_id = current_user.get("id", "dev_candidate")
+    return await InterviewService.get_session_report(interview_id, user_id=user_id)

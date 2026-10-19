@@ -73,6 +73,7 @@ class SessionDetailResponse(BaseModel):
     created_at: str
     updated_at: str
     is_completed: bool
+    storage_mode: str = "in_memory_fallback"
 
 class SessionSummaryItem(BaseModel):
     session_id: str
@@ -93,6 +94,7 @@ class TranscriptTurnItem(BaseModel):
 
 class SessionReportResponse(BaseModel):
     session_id: str
+    user_id: str
     job_title: str
     status: str
     total_questions: int
@@ -102,3 +104,4 @@ class SessionReportResponse(BaseModel):
     transcript: List[TranscriptTurnItem]
     created_at: str
     completed_at: Optional[str] = None
+    storage_mode: str = "in_memory_fallback"
