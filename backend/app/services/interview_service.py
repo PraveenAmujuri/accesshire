@@ -224,16 +224,76 @@ class InterviewService:
         payload: InterviewSessionCreate,
         user_id: str
     ) -> SessionDetailResponse:
-        """Initializes a new interview session."""
+        """Initializes a new interview session dynamically using the Interview Planner Agent (Agent 2)."""
         session_id = f"sess_{uuid.uuid4().hex[:10]}"
         now = cls._now_iso()
 
         target_count = max(1, min(payload.target_question_count, 10))
-        questions = cls._generate_baseline_questions(
-            job_title=payload.job_title,
-            job_description=payload.job_description,
-            target_count=target_count
-        )
+
+        # Dynamically execute Interview Planner Agent (Agent 2)
+        try:
+            from app.agents.interview_planner_agent import InterviewPlannerAgent
+            from app.services.resume_service import ResumeService
+            from app.core.orchestrator import orchestrator
+
+            analysis_schema = None
+            if payload.resume_id:
+                resume_text = await ResumeService.get_resume_text(payload.resume_id, user_id=user_id)
+                if resume_text:
+                    try:
+                        analysis_res = await orchestrator.run_candidate_job_analysis(
+                            resume_text=resume_text,
+                            job_description=payload.job_description,
+                            job_title=payload.job_title
+                        )
+                        analysis_schema = analysis_res.get("analysis")
+                    except Exception:
+                        analysis_schema = None
+
+            plan_res = await orchestrator.run_interview_planner(
+                job_title=payload.job_title,
+                job_description=payload.job_description,
+                target_question_count=target_count,
+                analysis=analysis_schema,
+                simplified_language=payload.simplified_language,
+                extended_time=payload.extended_time,
+                voice_enabled=payload.voice_enabled
+            )
+            plan = plan_res.get("plan")
+            
+            questions = []
+            turn_idx = 1
+            if plan and plan.planned_topics:
+                for domain in plan.planned_topics:
+                    for _ in range(domain.allocated_questions):
+                        if turn_idx > target_count:
+                            break
+                        questions.append({
+                            "question_id": f"q_{turn_idx}_{uuid.uuid4().hex[:6]}",
+                            "turn_index": turn_idx,
+                            "topic_id": domain.id,
+                            "topic_name": domain.name,
+                            "question_text": domain.sample_question_prompt or f"Can you explain your experience in {domain.name}?",
+                            "simplified_question_text": domain.simplified_prompt or f"How have you worked with {domain.name}?",
+                            "difficulty": plan.starting_difficulty,
+                            "status": "pending",
+                            "candidate_answer": None,
+                            "answered_at": None,
+                        })
+                        turn_idx += 1
+            if not questions:
+                questions = cls._generate_baseline_questions(
+                    job_title=payload.job_title,
+                    job_description=payload.job_description,
+                    target_count=target_count
+                )
+        except Exception as exc:
+            logger.warning("Dynamic planner failed during create_session (%s); using baseline generation.", exc)
+            questions = cls._generate_baseline_questions(
+                job_title=payload.job_title,
+                job_description=payload.job_description,
+                target_count=target_count
+            )
 
         session_doc = {
             "session_id": session_id,

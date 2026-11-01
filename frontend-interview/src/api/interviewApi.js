@@ -151,4 +151,11 @@ export const interviewApi = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  // Agent 2: Interview Planner Agent
+  generatePlan: (payload) =>
+    request('/interviews/plan', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };

@@ -37,6 +37,10 @@ export default function SetupPage() {
   const [analyzingProfile, setAnalyzingProfile] = useState(false);
   const [analysisResult, setAnalysisResult] = useState(null);
 
+  // Agent 2: Interview Planner state
+  const [planningBlueprint, setPlanningBlueprint] = useState(false);
+  const [interviewPlan, setInterviewPlan] = useState(null);
+
   // General submission & error state
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -78,6 +82,7 @@ export default function SetupPage() {
     setResumeFile(null);
     setUploadedResume(null);
     setAnalysisResult(null);
+    setInterviewPlan(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -107,6 +112,37 @@ export default function SetupPage() {
       setErrorMessage(err.message || 'Candidate & Job Analysis failed.');
     } finally {
       setAnalyzingProfile(false);
+    }
+  };
+
+  // Run Agent 2: Interview Planner Agent
+  const handleGeneratePlan = async () => {
+    if (!jobTitle.trim() || !jobDescription.trim()) {
+      setErrorMessage('Please provide both job title and description before building blueprint.');
+      return;
+    }
+
+    setPlanningBlueprint(true);
+    setErrorMessage('');
+
+    try {
+      const res = await interviewApi.generatePlan({
+        job_title: jobTitle.trim(),
+        job_description: jobDescription.trim(),
+        resume_id: uploadedResume?.resume_id,
+        target_question_count: Number(targetQuestionCount) || 3,
+        simplified_language: simplifiedLanguage,
+        extended_time: extendedTime,
+        voice_enabled: false,
+      });
+
+      if (res && res.plan) {
+        setInterviewPlan(res.plan);
+      }
+    } catch (err) {
+      setErrorMessage(err.message || 'Interview blueprint planning failed.');
+    } finally {
+      setPlanningBlueprint(false);
     }
   };
 
@@ -378,6 +414,73 @@ export default function SetupPage() {
                       </ul>
                     </div>
                   )}
+
+                  {/* Trigger Agent 2 Planner */}
+                  <div className="pt-2 border-t border-indigo-100 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={handleGeneratePlan}
+                      disabled={planningBlueprint}
+                      className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs flex items-center gap-1.5 shadow"
+                    >
+                      {planningBlueprint ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Generating Agent 2 Blueprint...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Generate Interview Blueprint (Agent 2)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Agent 2 Interview Plan Card */}
+              {interviewPlan && (
+                <div className="p-5 rounded-xl border border-indigo-200 dark:border-amber-400/40 bg-white dark:bg-zinc-900 space-y-4 text-xs shadow-sm">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-2">
+                    <div className="flex items-center gap-2 font-bold text-sm text-indigo-950 dark:text-amber-300">
+                      <Layers className="w-4 h-4" />
+                      <span>Agent 2: Tailored Interview Blueprint</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 font-semibold text-[10px]">
+                        Starts: {interviewPlan.starting_difficulty}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-amber-400/20 text-indigo-800 dark:text-amber-300 font-bold text-[10px]">
+                        {interviewPlan.target_question_count} Questions
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="font-semibold block text-slate-700 dark:text-zinc-300 mb-0.5">Assessment Strategy:</span>
+                    <p className="opacity-80 leading-relaxed text-[11px]">{interviewPlan.assessment_strategy}</p>
+                  </div>
+
+                  {/* Planned Topics List */}
+                  <div className="space-y-2">
+                    <span className="font-semibold block text-slate-700 dark:text-zinc-300">Assessment Domains & Weights:</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {interviewPlan.planned_topics?.map((topic, idx) => (
+                        <div key={idx} className="p-2.5 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-black space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-[11px]">{topic.name}</span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-zinc-800 text-indigo-700 dark:text-amber-300 font-mono">
+                              weight: {topic.weight}x
+                            </span>
+                          </div>
+                          <div className="text-[10px] opacity-70">
+                            Quota: {topic.allocated_questions} Qs | Priority: {topic.priority}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
