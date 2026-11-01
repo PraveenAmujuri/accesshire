@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 
@@ -13,9 +13,15 @@ db_instance = Database()
 async def connect_to_mongo():
     logger.info("Initializing MongoDB connection to %s", settings.MONGODB_URL)
     try:
+        client_kwargs = {
+            "serverSelectionTimeoutMS": 5000
+        }
+        if settings.MONGODB_ALLOW_INVALID_CERTIFICATES or "mongodb+srv://" in settings.MONGODB_URL:
+            client_kwargs["tlsAllowInvalidCertificates"] = True
+
         db_instance.client = AsyncIOMotorClient(
             settings.MONGODB_URL,
-            serverSelectionTimeoutMS=2000
+            **client_kwargs
         )
         db_instance.db = db_instance.client[settings.DATABASE_NAME]
         # Verify connection

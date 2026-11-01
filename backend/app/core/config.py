@@ -1,4 +1,4 @@
-﻿from typing import List
+from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # Database
     MONGODB_URL: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = "accesshire_db"
+    MONGODB_ALLOW_INVALID_CERTIFICATES: bool = True
 
     # Security
     JWT_SECRET: str = "accesshire_jwt_dev_secret_key_change_in_production"
