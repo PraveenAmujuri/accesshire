@@ -22,7 +22,7 @@ export default function LoginPage() {
         localStorage.setItem('accesshire_user', JSON.stringify({
           id: response.user_id,
           email: response.email,
-          name: response.full_name,
+          name: response.name,
         }));
         navigate('/dashboard');
       } else {

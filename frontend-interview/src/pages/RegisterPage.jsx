@@ -24,7 +24,7 @@ export default function RegisterPage() {
 
     try {
       const response = await interviewApi.register({
-        full_name: name,
+        name,
         email,
         password,
       });
@@ -34,11 +34,11 @@ export default function RegisterPage() {
         localStorage.setItem('accesshire_user', JSON.stringify({
           id: response.user_id,
           email: response.email,
-          name: response.full_name,
+          name: response.name,
         }));
         navigate('/dashboard');
       } else {
-        setError('Account created, but token was not returned.');
+        setError('Account created, but authentication token was not returned.');
       }
     } catch (err) {
       setError(err.message || 'Registration failed');

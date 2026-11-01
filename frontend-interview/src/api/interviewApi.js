@@ -1,6 +1,28 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 /**
+ * Helper to extract human-readable error messages from API responses,
+ * including FastAPI 422 validation detail arrays.
+ */
+function extractErrorMessage(data) {
+  if (!data) return 'Request failed';
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data.detail)) {
+    // FastAPI validation errors: [{ loc: [...], msg: "Field required", type: "..." }]
+    return data.detail
+      .map((item) => (typeof item === 'object' && item.msg ? `${item.loc?.slice(1).join('.') || 'Field'}: ${item.msg}` : String(item)))
+      .join(', ');
+  }
+  if (typeof data.detail === 'string') {
+    return data.detail;
+  }
+  if (typeof data.message === 'string') {
+    return data.message;
+  }
+  return JSON.stringify(data);
+}
+
+/**
  * Standard HTTP helper with JWT Bearer auth and error unwrapping
  */
 async function request(endpoint, options = {}) {
@@ -25,8 +47,7 @@ async function request(endpoint, options = {}) {
     const data = isJson ? await res.json() : await res.text();
 
     if (!res.ok) {
-      const errorMessage = (data && data.detail) || (typeof data === 'string' ? data : 'Request failed');
-      throw new Error(errorMessage);
+      throw new Error(extractErrorMessage(data));
     }
     return data;
   } catch (err) {
@@ -113,7 +134,7 @@ export const interviewApi = {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || 'Resume upload failed');
+        throw new Error(extractErrorMessage(data));
       }
       return data;
     } catch (err) {
