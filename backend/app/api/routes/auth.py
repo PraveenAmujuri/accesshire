@@ -1,31 +1,22 @@
-﻿from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter
 from app.schemas.auth import UserRegisterRequest, UserLoginRequest, TokenResponse
-from app.core.security import get_password_hash, verify_password, create_access_token
+from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=TokenResponse)
+@router.post("/register", response_model=TokenResponse, status_code=201)
 async def register_user(payload: UserRegisterRequest):
-    # Phase 1 foundation stub: validates schema and returns token
-    user_id = "user_" + payload.name.lower().replace(" ", "_")
-    token = create_access_token(subject=user_id)
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user_id=user_id,
-        name=payload.name,
-        email=payload.email
-    )
+    """
+    Registers a new candidate account.
+    Hashes password using salted bcrypt, persists user profile and
+    optional accessibility preferences, and issues a signed JWT token.
+    """
+    return await AuthService.register(payload)
 
 @router.post("/login", response_model=TokenResponse)
 async def login_user(payload: UserLoginRequest):
-    # Phase 1 foundation stub: validates credentials and returns token
-    user_id = "user_candidate"
-    token = create_access_token(subject=user_id)
-    return TokenResponse(
-        access_token=token,
-        token_type="bearer",
-        user_id=user_id,
-        name="Candidate",
-        email=payload.email
-    )
+    """
+    Authenticates candidate credentials against the stored bcrypt hash.
+    Returns a signed JWT access token upon successful authentication.
+    """
+    return await AuthService.login(payload)

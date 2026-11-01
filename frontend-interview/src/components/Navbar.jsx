@@ -1,11 +1,33 @@
-﻿import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, Eye, Type, User } from 'lucide-react';
+import { Sparkles, Eye, Type, User, LogOut } from 'lucide-react';
 import { useAccessibility } from '../context/AccessibilityContext';
 
 export default function Navbar() {
   const { highContrast, toggleHighContrast, fontSize, setFontSize } = useAccessibility();
   const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    const rawUser = localStorage.getItem('accesshire_user');
+    const token = localStorage.getItem('accesshire_token');
+    if (rawUser && token) {
+      try {
+        setCurrentUser(JSON.parse(rawUser));
+      } catch (e) {
+        setCurrentUser(null);
+      }
+    } else {
+      setCurrentUser(null);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('accesshire_token');
+    localStorage.removeItem('accesshire_user');
+    setCurrentUser(null);
+    navigate('/login');
+  };
 
   const cycleFontSize = () => {
     if (fontSize === 'text-sm') setFontSize('text-base');
@@ -29,7 +51,7 @@ export default function Navbar() {
           <Link to="/setup" className="hover:underline focus:ring-2 focus:ring-amber-400 p-1 rounded">New Interview</Link>
         </nav>
 
-        {/* Accessibility Toolbar */}
+        {/* Accessibility & Account Toolbar */}
         <div className="flex items-center gap-3">
           <button
             onClick={toggleHighContrast}
@@ -53,15 +75,33 @@ export default function Navbar() {
             <span>Size: {fontSize.replace('text-', '')}</span>
           </button>
 
-          <Link
-            to="/login"
-            className={`p-2 rounded-lg border transition-colors ${
-              highContrast ? 'border-amber-400 text-amber-300 hover:bg-zinc-900' : 'border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-            title="User Account"
-          >
-            <User className="w-4 h-4" />
-          </Link>
+          {currentUser ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium px-2 py-1 rounded bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-amber-400/30">
+                {currentUser.name || currentUser.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                className={`p-2 rounded-lg border transition-colors ${
+                  highContrast ? 'border-amber-400 text-amber-300 hover:bg-zinc-900' : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+                title="Log out"
+                aria-label="Log out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className={`p-2 rounded-lg border transition-colors ${
+                highContrast ? 'border-amber-400 text-amber-300 hover:bg-zinc-900' : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+              title="User Account"
+            >
+              <User className="w-4 h-4" />
+            </Link>
+          )}
         </div>
       </div>
     </header>

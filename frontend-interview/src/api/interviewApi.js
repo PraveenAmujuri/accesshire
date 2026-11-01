@@ -1,16 +1,21 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 /**
- * Standard HTTP helper with error unwrapping
+ * Standard HTTP helper with JWT Bearer auth and error unwrapping
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('accesshire_token');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
   const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
     ...options,
+    headers,
   };
 
   try {
@@ -34,6 +39,28 @@ async function request(endpoint, options = {}) {
 }
 
 export const interviewApi = {
+  // Authentication
+  register: (payload) =>
+    request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  login: (payload) =>
+    request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getProfile: () =>
+    request('/users/me'),
+
+  updatePreferences: (preferences) =>
+    request('/users/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    }),
+
   // Start a new interview session
   startSession: (payload) =>
     request('/interviews/start', {
@@ -72,12 +99,16 @@ export const interviewApi = {
 
   // Upload resume file (PDF or DOCX)
   uploadResume: async (file) => {
+    const token = localStorage.getItem('accesshire_token');
     const formData = new FormData();
     formData.append('file', file);
     const url = `${API_BASE_URL}/resumes/upload`;
     try {
       const res = await fetch(url, {
         method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: formData,
       });
       const data = await res.json();
