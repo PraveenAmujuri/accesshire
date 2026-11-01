@@ -40,8 +40,10 @@ class InterviewService:
         return datetime.now(timezone.utc).isoformat()
 
     @classmethod
-    def get_storage_mode(cls) -> str:
-        """Returns the active storage backend identifier."""
+    def get_storage_mode(cls, session: Optional[Dict[str, Any]] = None) -> str:
+        """Returns the active storage backend identifier for a session or the system."""
+        if session and session.get("storage_mode"):
+            return session["storage_mode"]
         if db_instance.client is not None and db_instance.db is not None:
             return "mongodb"
         return "in_memory_fallback"
@@ -175,22 +177,27 @@ class InterviewService:
         return questions
 
     @classmethod
-    async def _save_session(cls, session: Dict[str, Any]) -> None:
-        """Persists the session to MongoDB or the memory repository."""
+    async def _save_session(cls, session: Dict[str, Any]) -> str:
+        """Persists the session to MongoDB or the memory repository and returns the storage mode used."""
         session["updated_at"] = cls._now_iso()
         db = db_instance.db
         if db is not None:
             try:
+                session_to_save = dict(session)
+                session_to_save["storage_mode"] = "mongodb"
                 await db.interview_sessions.replace_one(
                     {"session_id": session["session_id"]},
-                    session,
+                    session_to_save,
                     upsert=True
                 )
-                return
+                session["storage_mode"] = "mongodb"
+                return "mongodb"
             except Exception as exc:
                 logger.warning("MongoDB write failed (%s); falling back to in-memory store.", exc)
 
+        session["storage_mode"] = "in_memory_fallback"
         _in_memory_sessions[session["session_id"]] = session
+        return "in_memory_fallback"
 
     @classmethod
     async def _find_session(cls, session_id: str) -> Optional[Dict[str, Any]]:
@@ -201,11 +208,15 @@ class InterviewService:
                 doc = await db.interview_sessions.find_one({"session_id": session_id})
                 if doc:
                     doc.pop("_id", None)
+                    doc["storage_mode"] = doc.get("storage_mode", "mongodb")
                     return doc
             except Exception as exc:
                 logger.warning("MongoDB read failed (%s); reading from in-memory store.", exc)
 
-        return _in_memory_sessions.get(session_id)
+        session = _in_memory_sessions.get(session_id)
+        if session:
+            session["storage_mode"] = "in_memory_fallback"
+        return session
 
     @classmethod
     async def create_session(
@@ -244,8 +255,7 @@ class InterviewService:
             "completed_at": None,
         }
 
-        await cls._save_session(session_doc)
-        storage_mode = cls.get_storage_mode()
+        storage_mode = await cls._save_session(session_doc)
         logger.info(
             "Created interview session %s for user %s with %d questions (storage: %s)",
             session_id, user_id, len(questions), storage_mode
@@ -291,7 +301,7 @@ class InterviewService:
             created_at=session["created_at"],
             updated_at=session["updated_at"],
             is_completed=is_completed,
-            storage_mode=cls.get_storage_mode(),
+            storage_mode=cls.get_storage_mode(session),
         )
 
     @classmethod
@@ -495,7 +505,7 @@ class InterviewService:
             created_at=session["created_at"],
             updated_at=session["updated_at"],
             is_completed=True,
-            storage_mode=cls.get_storage_mode(),
+            storage_mode=cls.get_storage_mode(session),
         )
 
     @classmethod
@@ -576,5 +586,5 @@ class InterviewService:
             transcript=transcript,
             created_at=session["created_at"],
             completed_at=session.get("completed_at"),
-            storage_mode=cls.get_storage_mode(),
+            storage_mode=cls.get_storage_mode(session),
         )

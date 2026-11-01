@@ -1,13 +1,9 @@
-﻿import pytest
+import pytest
 from concurrent.futures import ThreadPoolExecutor
 from fastapi.testclient import TestClient
 from app.main import app
 from app.core.security import create_access_token
 
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
 
 def test_full_interview_lifecycle(client):
     """Verifies standard sequential mock interview progression."""
@@ -282,3 +278,41 @@ def test_storage_backend_transparency(client):
     # When MongoDB is disconnected, database_connected must be False and storage_backend must be in_memory_fallback
     if not data["database_connected"]:
         assert data["storage_backend"] == "in_memory_fallback"
+
+def test_write_failure_fallback_storage_mode(client):
+    """
+    Simulates a MongoDB write failure and verifies that session creation,
+    retrieval, and report transparently fall back to in-memory store and
+    accurately report storage_mode as 'in_memory_fallback'.
+    """
+    from unittest.mock import patch
+    from motor.motor_asyncio import AsyncIOMotorCollection
+
+    token = create_access_token("user_chaos")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with patch.object(AsyncIOMotorCollection, "replace_one", side_effect=Exception("Simulated disk/network write error")):
+        create_res = client.post(
+            "/api/interviews/start",
+            json={
+                "job_title": "Site Reliability Engineer",
+                "job_description": "Chaos engineering and fault tolerance.",
+                "target_question_count": 2
+            },
+            headers=headers
+        )
+        assert create_res.status_code == 201
+        session_data = create_res.json()
+        session_id = session_data["session_id"]
+        assert session_data["storage_mode"] == "in_memory_fallback"
+
+        # Verify get_session reports in_memory_fallback
+        get_res = client.get(f"/api/interviews/{session_id}", headers=headers)
+        assert get_res.status_code == 200
+        assert get_res.json()["storage_mode"] == "in_memory_fallback"
+
+        # Verify report reports in_memory_fallback
+        rep_res = client.get(f"/api/reports/{session_id}", headers=headers)
+        assert rep_res.status_code == 200
+        assert rep_res.json()["storage_mode"] == "in_memory_fallback"
+
