@@ -1,4 +1,4 @@
-﻿# AccessHire AI
+# AccessHire AI
 
 > **Final-Year B.Tech Artificial Intelligence & Machine Learning Project**  
 > An Agentic AI-powered accessible mock interview platform designed to help candidates practice job interviews through adaptive, closed-loop orchestration.
@@ -16,6 +16,23 @@ AccessHire AI is decoupled into three independent applications:
 ---
 
 ## 🚀 Quickstart Guide
+
+### Single-Command Startup (Recommended)
+You can start all three services (FastAPI Backend, Marketing Frontend, and Interview Workspace) with a single command:
+
+**PowerShell:**
+```powershell
+.\start.ps1
+```
+
+**Command Prompt / Double-Click:**
+```cmd
+start.bat
+```
+
+---
+
+### Manual Service Startup
 
 ### 1. Backend (FastAPI)
 ```bash
