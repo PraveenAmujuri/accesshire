@@ -1,4 +1,4 @@
-﻿const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 /**
  * Standard HTTP helper with error unwrapping
@@ -69,4 +69,34 @@ export const interviewApi = {
   // Get full session report and transcript
   getReport: (sessionId) =>
     request(`/reports/${sessionId}`),
+
+  // Upload resume file (PDF or DOCX)
+  uploadResume: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/resumes/upload`;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Resume upload failed');
+      }
+      return data;
+    } catch (err) {
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        throw new Error('Unable to connect to the AccessHire backend service.');
+      }
+      throw err;
+    }
+  },
+
+  // Agent 1: Candidate & Job Analysis
+  analyzeCandidateJob: (payload) =>
+    request('/analysis/candidate-job', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };

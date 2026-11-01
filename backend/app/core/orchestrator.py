@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger("accesshire.orchestrator")
@@ -47,4 +47,43 @@ class CentralOrchestrator:
                         return await fallback_handler(state_payload)
                     raise exc
 
+    async def run_candidate_job_analysis(
+        self,
+        resume_text: str,
+        job_description: str,
+        job_title: str = ""
+    ) -> Dict[str, Any]:
+        """Runs Agent 1 (Candidate & Job Analysis) with orchestrator resilience and fallbacks."""
+        async def agent_task(payload):
+            from app.agents.candidate_job_analysis_agent import CandidateJobAnalysisAgent
+            return await CandidateJobAnalysisAgent.analyze(
+                resume_text=payload["resume_text"],
+                job_description=payload["job_description"],
+                job_title=payload.get("job_title", "")
+            )
+
+        async def fallback_task(payload):
+            from app.agents.candidate_job_analysis_agent import CandidateJobAnalysisAgent
+            schema = CandidateJobAnalysisAgent.heuristic_analysis(
+                resume_text=payload["resume_text"],
+                job_description=payload["job_description"],
+                job_title=payload.get("job_title", "")
+            )
+            return {"analysis": schema, "source": "heuristic_fallback"}
+
+        payload = {
+            "resume_text": resume_text,
+            "job_description": job_description,
+            "job_title": job_title
+        }
+
+        return await self.execute_task_with_resilience(
+            task_name="candidate_job_analysis",
+            agent_callable=agent_task,
+            state_payload=payload,
+            max_retries=1,
+            fallback_handler=fallback_task
+        )
+
 orchestrator = CentralOrchestrator()
+
