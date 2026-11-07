@@ -231,6 +231,7 @@ class InterviewService:
         target_count = max(1, min(payload.target_question_count, 10))
 
         # Dynamically execute Interview Planner Agent (Agent 2)
+        plan = None
         try:
             from app.agents.interview_planner_agent import InterviewPlannerAgent
             from app.services.resume_service import ResumeService
@@ -295,27 +296,54 @@ class InterviewService:
                 target_count=target_count
             )
 
+        # Initialize formal InterviewState via Orchestrator State Engine
+        from app.core.orchestrator import orchestrator
+        initial_state = orchestrator.initialize_interview_state(
+            session_id=session_id,
+            user_id=user_id,
+            job_title=payload.job_title,
+            job_description=payload.job_description,
+            resume_id=payload.resume_id,
+            plan=plan,
+            questions=questions,
+            accessibility_settings={
+                "simplified_language": payload.simplified_language,
+                "voice_enabled": payload.voice_enabled,
+                "extended_time": payload.extended_time,
+            },
+            storage_mode="mongodb"
+        )
+
         session_doc = {
             "session_id": session_id,
             "user_id": user_id,
-            "job_title": payload.job_title.strip() or "General Software Engineer",
-            "job_description": payload.job_description.strip(),
+            "job_title": initial_state.job_title,
+            "job_description": initial_state.job_description,
             "resume_id": payload.resume_id,
-            "status": "in_progress",
-            "current_turn": 1,
-            "total_questions": len(questions),
+            "status": initial_state.status,
+            "current_turn": initial_state.current_turn,
+            "total_questions": initial_state.total_questions,
+            "remaining_questions": initial_state.remaining_questions,
+            "current_topic_id": initial_state.current_topic_id,
+            "current_topic_name": initial_state.current_topic_name,
+            "current_difficulty": initial_state.current_difficulty,
             "accessibility_settings": {
                 "simplified_language": payload.simplified_language,
                 "voice_enabled": payload.voice_enabled,
                 "extended_time": payload.extended_time,
             },
             "questions": questions,
+            "interview_state": initial_state.model_dump(),
             "created_at": now,
             "updated_at": now,
             "completed_at": None,
         }
 
         storage_mode = await cls._save_session(session_doc)
+        initial_state.storage_mode = storage_mode
+        session_doc["interview_state"]["storage_mode"] = storage_mode
+        await cls._save_session(session_doc)
+
         logger.info(
             "Created interview session %s for user %s with %d questions (storage: %s)",
             session_id, user_id, len(questions), storage_mode
@@ -326,9 +354,13 @@ class InterviewService:
             user_id=user_id,
             job_title=session_doc["job_title"],
             job_description=session_doc["job_description"],
-            status="in_progress",
-            current_turn=1,
-            total_questions=len(questions),
+            status=session_doc["status"],
+            current_turn=session_doc["current_turn"],
+            total_questions=session_doc["total_questions"],
+            remaining_questions=session_doc.get("remaining_questions", len(questions)),
+            current_topic_id=session_doc.get("current_topic_id"),
+            current_topic_name=session_doc.get("current_topic_name"),
+            current_difficulty=session_doc.get("current_difficulty"),
             accessibility_settings=session_doc["accessibility_settings"],
             created_at=now,
             updated_at=now,
@@ -349,6 +381,9 @@ class InterviewService:
         cls._verify_ownership(session, user_id)
 
         is_completed = session["status"] == "completed" or session["current_turn"] > session["total_questions"]
+        state_dict = session.get("interview_state", {})
+        remaining_q = state_dict.get("remaining_questions", max(0, session["total_questions"] - session["current_turn"] + 1))
+        
         return SessionDetailResponse(
             session_id=session["session_id"],
             user_id=session["user_id"],
@@ -357,6 +392,10 @@ class InterviewService:
             status=session["status"],
             current_turn=session["current_turn"],
             total_questions=session["total_questions"],
+            remaining_questions=remaining_q,
+            current_topic_id=session.get("current_topic_id") or state_dict.get("current_topic_id"),
+            current_topic_name=session.get("current_topic_name") or state_dict.get("current_topic_name"),
+            current_difficulty=session.get("current_difficulty") or state_dict.get("current_difficulty"),
             accessibility_settings=session["accessibility_settings"],
             created_at=session["created_at"],
             updated_at=session["updated_at"],
@@ -395,10 +434,14 @@ class InterviewService:
             )
 
         is_last = current_turn >= len(questions)
+        state_dict = session.get("interview_state", {})
+        remaining_turns = state_dict.get("remaining_questions", max(0, len(questions) - current_turn + 1))
+
         return QuestionResponse(
             question_id=matched_q["question_id"],
             turn_index=matched_q["turn_index"],
             total_turns=len(questions),
+            remaining_turns=remaining_turns,
             topic_id=matched_q["topic_id"],
             topic_name=matched_q["topic_name"],
             question_text=matched_q["question_text"],
@@ -483,30 +526,64 @@ class InterviewService:
                     detail=f"Submitted question ID '{payload.question_id}' does not match active question '{active_q['question_id']}'."
                 )
 
-            # Record answer atomically
+            # Record answer atomically using Orchestrator InterviewStateEngine
+            from app.core.orchestrator import orchestrator
+            from app.schemas.state import InterviewState, TurnRecord, TurnEvaluation
+
+            # Load or reconstruct structured InterviewState
+            state_dict = session.get("interview_state")
+            if state_dict:
+                current_state = InterviewState(**state_dict)
+            else:
+                current_state = orchestrator.initialize_interview_state(
+                    session_id=session_id,
+                    user_id=user_id,
+                    job_title=session["job_title"],
+                    job_description=session["job_description"],
+                    resume_id=session.get("resume_id"),
+                    questions=questions,
+                    accessibility_settings=session.get("accessibility_settings"),
+                    storage_mode=cls.get_storage_mode(session)
+                )
+
+            # Advance state through central orchestrator
+            updated_state = orchestrator.update_state_on_answer(
+                state=current_state,
+                question_id=payload.question_id or active_q["question_id"],
+                answer_text=trimmed_answer,
+                modality=payload.modality,
+                duration_seconds=payload.duration_seconds,
+                evaluation=None # Prepared integration point for Evaluation Agent (Agent 5)
+            )
+
+            # Synchronize session document with state
             active_q["status"] = "answered"
             active_q["candidate_answer"] = trimmed_answer
             active_q["answered_at"] = cls._now_iso()
 
-            total_questions = len(questions)
-            is_completed = current_turn >= total_questions
+            session["status"] = updated_state.status
+            session["current_turn"] = updated_state.current_turn
+            session["remaining_questions"] = updated_state.remaining_questions
+            session["current_topic_id"] = updated_state.current_topic_id
+            session["current_topic_name"] = updated_state.current_topic_name
+            session["current_difficulty"] = updated_state.current_difficulty
+            session["interview_state"] = updated_state.model_dump()
 
-            if is_completed:
-                session["status"] = "completed"
-                session["completed_at"] = cls._now_iso()
+            if updated_state.is_completed:
+                session["completed_at"] = updated_state.completed_at
                 await cls._save_session(session)
-                logger.info("Session %s completed after %d questions.", session_id, total_questions)
+                logger.info("Session %s completed after %d questions.", session_id, len(questions))
                 return SubmitAnswerResponse(
                     session_id=session_id,
                     turn_index=current_turn,
                     status="completed",
                     is_completed=True,
                     next_turn=None,
+                    remaining_questions=0,
                     message="Final answer recorded. Interview session completed.",
                     next_question=None,
                 )
             else:
-                session["current_turn"] = current_turn + 1
                 await cls._save_session(session)
 
                 next_q = next((q for q in questions if q["turn_index"] == session["current_turn"]), None)
@@ -515,23 +592,25 @@ class InterviewService:
                     next_q_resp = QuestionResponse(
                         question_id=next_q["question_id"],
                         turn_index=next_q["turn_index"],
-                        total_turns=total_questions,
+                        total_turns=len(questions),
+                        remaining_turns=updated_state.remaining_questions,
                         topic_id=next_q["topic_id"],
                         topic_name=next_q["topic_name"],
                         question_text=next_q["question_text"],
                         simplified_question_text=next_q.get("simplified_question_text"),
                         difficulty=next_q["difficulty"],
                         action_type="NEW_QUESTION",
-                        is_last_question=session["current_turn"] >= total_questions,
+                        is_last_question=session["current_turn"] >= len(questions),
                     )
 
-                logger.info("Session %s advanced to turn %d.", session_id, session["current_turn"])
+                logger.info("Session %s advanced to turn %d (%d remaining).", session_id, session["current_turn"], updated_state.remaining_questions)
                 return SubmitAnswerResponse(
                     session_id=session_id,
                     turn_index=current_turn,
                     status="in_progress",
                     is_completed=False,
                     next_turn=session["current_turn"],
+                    remaining_questions=updated_state.remaining_questions,
                     message="Answer recorded. Proceeding to next question.",
                     next_question=next_q_resp,
                 )
@@ -548,7 +627,18 @@ class InterviewService:
 
         cls._verify_ownership(session, user_id)
 
+        # Update state via Central Orchestrator State Engine
+        from app.core.orchestrator import orchestrator
+        from app.schemas.state import InterviewState
+
+        state_dict = session.get("interview_state")
+        if state_dict:
+            current_state = InterviewState(**state_dict)
+            orchestrator.end_state_early(current_state)
+            session["interview_state"] = current_state.model_dump()
+
         session["status"] = "completed"
+        session["remaining_questions"] = 0
         session["completed_at"] = cls._now_iso()
         await cls._save_session(session)
         logger.info("Session %s ended early by user %s.", session_id, user_id)
@@ -561,6 +651,10 @@ class InterviewService:
             status="completed",
             current_turn=session["current_turn"],
             total_questions=session["total_questions"],
+            remaining_questions=0,
+            current_topic_id=session.get("current_topic_id"),
+            current_topic_name=session.get("current_topic_name"),
+            current_difficulty=session.get("current_difficulty"),
             accessibility_settings=session["accessibility_settings"],
             created_at=session["created_at"],
             updated_at=session["updated_at"],

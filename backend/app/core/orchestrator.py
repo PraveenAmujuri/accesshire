@@ -1,14 +1,16 @@
 import logging
 from typing import Dict, Any, Optional
 from app.schemas.analysis import CandidateJobAnalysisSchema
+from app.schemas.planner import InterviewPlanSchema
+from app.schemas.state import InterviewState, TurnEvaluation
 
 logger = logging.getLogger("accesshire.orchestrator")
 
 class CentralOrchestrator:
     """
     Central Orchestrator & Supervisor Component:
-    - Coordinates execution of multi-agent tasks
-    - Passes structured state between agents
+    - Coordinates execution of multi-agent tasks (Agent 1, Agent 2, etc.)
+    - Manages lifecycle state transitions via the centralized InterviewStateEngine
     - Monitors agent outputs and validates structured Pydantic responses
     - Implements retries and controlled fallback heuristics
     - Logs telemetry for system observability
@@ -139,5 +141,59 @@ class CentralOrchestrator:
             max_retries=1,
             fallback_handler=fallback_task
         )
+
+    def initialize_interview_state(
+        self,
+        session_id: str,
+        user_id: str,
+        job_title: str,
+        job_description: str,
+        resume_id: Optional[str] = None,
+        plan: Optional[InterviewPlanSchema] = None,
+        questions: Optional[list] = None,
+        accessibility_settings: Optional[Dict[str, Any]] = None,
+        storage_mode: str = "mongodb",
+    ) -> InterviewState:
+        """Initializes standardized interview state using the InterviewStateEngine."""
+        from app.services.state_engine import InterviewStateEngine
+        self.logger.info("CentralOrchestrator: Initializing interview state for session '%s'", session_id)
+        return InterviewStateEngine.initialize_state(
+            session_id=session_id,
+            user_id=user_id,
+            job_title=job_title,
+            job_description=job_description,
+            resume_id=resume_id,
+            plan=plan,
+            questions=questions,
+            accessibility_settings=accessibility_settings,
+            storage_mode=storage_mode,
+        )
+
+    def update_state_on_answer(
+        self,
+        state: InterviewState,
+        question_id: Optional[str],
+        answer_text: str,
+        modality: str = "text",
+        duration_seconds: Optional[int] = None,
+        evaluation: Optional[TurnEvaluation] = None,
+    ) -> InterviewState:
+        """Dispatches answer recording and state advancement to the InterviewStateEngine."""
+        from app.services.state_engine import InterviewStateEngine
+        self.logger.info("CentralOrchestrator: Updating state for session '%s' on turn %d", state.session_id, state.current_turn)
+        return InterviewStateEngine.record_answer_and_progress(
+            state=state,
+            question_id=question_id,
+            answer_text=answer_text,
+            modality=modality,
+            duration_seconds=duration_seconds,
+            evaluation=evaluation,
+        )
+
+    def end_state_early(self, state: InterviewState) -> InterviewState:
+        """Dispatches early termination to the InterviewStateEngine."""
+        from app.services.state_engine import InterviewStateEngine
+        self.logger.info("CentralOrchestrator: Ending state early for session '%s'", state.session_id)
+        return InterviewStateEngine.end_interview_early(state)
 
 orchestrator = CentralOrchestrator()

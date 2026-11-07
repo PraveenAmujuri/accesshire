@@ -1,4 +1,4 @@
-﻿from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 
 class PlannedTopic(BaseModel):
@@ -44,6 +44,7 @@ class QuestionResponse(BaseModel):
     question_id: str
     turn_index: int
     total_turns: int
+    remaining_turns: Optional[int] = None
     topic_id: str
     topic_name: str
     question_text: str
@@ -58,6 +59,7 @@ class SubmitAnswerResponse(BaseModel):
     status: str
     is_completed: bool
     next_turn: Optional[int] = None
+    remaining_questions: Optional[int] = None
     message: str
     next_question: Optional[QuestionResponse] = None
 
@@ -69,6 +71,10 @@ class SessionDetailResponse(BaseModel):
     status: Literal["planned", "in_progress", "completed", "abandoned"]
     current_turn: int
     total_questions: int
+    remaining_questions: Optional[int] = None
+    current_topic_id: Optional[str] = None
+    current_topic_name: Optional[str] = None
+    current_difficulty: Optional[str] = None
     accessibility_settings: Dict[str, Any]
     created_at: str
     updated_at: str
