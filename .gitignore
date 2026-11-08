@@ -1,4 +1,4 @@
-﻿# Environments & Secrets
+# Environments & Secrets
 .env
 .env.*
 !.env.example
@@ -40,3 +40,15 @@ Thumbs.db
 # User Uploads / Temporary data
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Dataset management (datasets, embeddings, raw files, vector indexes)
+backend/data/datasets/raw/
+backend/data/datasets/processed/
+backend/data/datasets/evaluation/
+backend/data/embeddings/
+backend/data/vector_indexes/
+!backend/data/datasets/metadata/
+!backend/data/datasets/raw/.gitkeep
+!backend/data/datasets/processed/.gitkeep
+!backend/data/datasets/evaluation/.gitkeep
+!backend/data/datasets/metadata/.gitkeep

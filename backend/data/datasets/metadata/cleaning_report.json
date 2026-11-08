@@ -1,0 +1,58 @@
+{
+  "datasets_processed": [
+    {
+      "dataset": "MBPP",
+      "total_raw": 427,
+      "rag_records": 339,
+      "eval_records": 86,
+      "duplicates_removed": 2,
+      "license": "CC-BY-4.0"
+    },
+    {
+      "dataset": "Spider",
+      "total_raw": 700,
+      "rag_records": 500,
+      "eval_records": 200,
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "dataset": "SParC",
+      "total_raw": 700,
+      "rag_records": 498,
+      "eval_records": 200,
+      "license": "CC BY-SA 4.0"
+    },
+    {
+      "dataset": "CS-Bench",
+      "total_raw": 236,
+      "rag_records": 0,
+      "eval_records": 236,
+      "license": "CC BY-NC 4.0",
+      "policy": "EVALUATION_ONLY"
+    },
+    {
+      "dataset": "CodeMMLU",
+      "total_raw": 200,
+      "rag_records": 0,
+      "eval_records": 200,
+      "license": "MIT",
+      "policy": "EVALUATION_ONLY"
+    },
+    {
+      "dataset": "ML & DS Coding Interview Question Bank",
+      "total_raw": 1000,
+      "rag_records": 20,
+      "eval_records": 0,
+      "deduplication_ratio": "1000 raw -> 20 unique conceptual templates",
+      "license": "MIT"
+    }
+  ],
+  "excluded_datasets": [
+    {
+      "dataset": "TIQA",
+      "reason": "Unverified distribution rights and domain ambiguity in academic sources. Excluded per research protocol."
+    }
+  ],
+  "rag_corpus_totals": 1357,
+  "evaluation_benchmark_totals": 922
+}

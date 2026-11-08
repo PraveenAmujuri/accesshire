@@ -25,9 +25,11 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gemini-1.5-flash"
     LLM_API_KEY: str = ""
 
-    # Storage
+    # Storage & Datasets
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 10
+    DATASET_STORAGE_DIR: str = "./data/datasets"
+    STORAGE_BACKEND: str = "local"  # "local", "s3", "gcs" (extensible for cloud object storage)
 
     @property
     def cors_origins_list(self) -> List[str]:

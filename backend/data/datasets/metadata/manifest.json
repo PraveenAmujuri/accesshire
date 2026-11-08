@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "datasets": {
+    "mbpp": {
+      "downloaded": true,
+      "source": "https://raw.githubusercontent.com/google-research/google-research/master/mbpp/sanitized-mbpp.json",
+      "license": "CC-BY-4.0",
+      "status": "raw_downloaded"
+    }
+  },
+  "last_updated": "2026-11-08T10:37:32.517897+00:00"
+}
