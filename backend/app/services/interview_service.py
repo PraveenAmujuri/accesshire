@@ -436,6 +436,8 @@ class InterviewService:
         is_last = current_turn >= len(questions)
         state_dict = session.get("interview_state", {})
         remaining_turns = state_dict.get("remaining_questions", max(0, len(questions) - current_turn + 1))
+        active_action = state_dict.get("active_action", "ASK_NEW_QUESTION")
+        action_reason = state_dict.get("action_reason")
 
         return QuestionResponse(
             question_id=matched_q["question_id"],
@@ -447,7 +449,8 @@ class InterviewService:
             question_text=matched_q["question_text"],
             simplified_question_text=matched_q.get("simplified_question_text"),
             difficulty=matched_q["difficulty"],
-            action_type="NEW_QUESTION",
+            action_type=active_action,
+            action_reason=action_reason,
             is_last_question=is_last,
         )
 
@@ -556,10 +559,17 @@ class InterviewService:
                 evaluation=None # Prepared integration point for Evaluation Agent (Agent 5)
             )
 
-            # Synchronize session document with state
+            # Evaluate Adaptive Decision Policy Agent (Agent 3)
+            policy_decision = orchestrator.evaluate_decision_policy(
+                state=updated_state,
+                plan=None
+            )
+
+            # Synchronize session document with state and policy decision
             active_q["status"] = "answered"
             active_q["candidate_answer"] = trimmed_answer
             active_q["answered_at"] = cls._now_iso()
+            active_q["action_decided"] = policy_decision.action
 
             session["status"] = updated_state.status
             session["current_turn"] = updated_state.current_turn
@@ -572,7 +582,10 @@ class InterviewService:
             if updated_state.is_completed:
                 session["completed_at"] = updated_state.completed_at
                 await cls._save_session(session)
-                logger.info("Session %s completed after %d questions.", session_id, len(questions))
+                logger.info(
+                    "Session %s completed. Decision: %s (Reason: %s)",
+                    session_id, policy_decision.action, policy_decision.reason
+                )
                 return SubmitAnswerResponse(
                     session_id=session_id,
                     turn_index=current_turn,
@@ -580,7 +593,9 @@ class InterviewService:
                     is_completed=True,
                     next_turn=None,
                     remaining_questions=0,
-                    message="Final answer recorded. Interview session completed.",
+                    action_decided=policy_decision.action,
+                    action_reason=policy_decision.reason,
+                    message=f"Final answer recorded. Decision: {policy_decision.action}.",
                     next_question=None,
                 )
             else:
@@ -594,16 +609,20 @@ class InterviewService:
                         turn_index=next_q["turn_index"],
                         total_turns=len(questions),
                         remaining_turns=updated_state.remaining_questions,
-                        topic_id=next_q["topic_id"],
-                        topic_name=next_q["topic_name"],
+                        topic_id=updated_state.current_topic_id,
+                        topic_name=updated_state.current_topic_name,
                         question_text=next_q["question_text"],
                         simplified_question_text=next_q.get("simplified_question_text"),
-                        difficulty=next_q["difficulty"],
-                        action_type="NEW_QUESTION",
+                        difficulty=updated_state.current_difficulty,
+                        action_type=policy_decision.action,
+                        action_reason=policy_decision.reason,
                         is_last_question=session["current_turn"] >= len(questions),
                     )
 
-                logger.info("Session %s advanced to turn %d (%d remaining).", session_id, session["current_turn"], updated_state.remaining_questions)
+                logger.info(
+                    "Session %s advanced to turn %d. Decision: %s (Reason: %s)",
+                    session_id, session["current_turn"], policy_decision.action, policy_decision.reason
+                )
                 return SubmitAnswerResponse(
                     session_id=session_id,
                     turn_index=current_turn,
@@ -611,7 +630,9 @@ class InterviewService:
                     is_completed=False,
                     next_turn=session["current_turn"],
                     remaining_questions=updated_state.remaining_questions,
-                    message="Answer recorded. Proceeding to next question.",
+                    action_decided=policy_decision.action,
+                    action_reason=policy_decision.reason,
+                    message=f"Answer recorded. Next action: {policy_decision.action}.",
                     next_question=next_q_resp,
                 )
 

@@ -50,7 +50,8 @@ class QuestionResponse(BaseModel):
     question_text: str
     simplified_question_text: Optional[str] = None
     difficulty: str
-    action_type: str = "NEW_QUESTION"
+    action_type: str = "ASK_NEW_QUESTION"
+    action_reason: Optional[str] = None
     is_last_question: bool = False
 
 class SubmitAnswerResponse(BaseModel):
@@ -60,6 +61,8 @@ class SubmitAnswerResponse(BaseModel):
     is_completed: bool
     next_turn: Optional[int] = None
     remaining_questions: Optional[int] = None
+    action_decided: Optional[str] = None
+    action_reason: Optional[str] = None
     message: str
     next_question: Optional[QuestionResponse] = None
 

@@ -90,6 +90,8 @@ class InterviewStateEngine:
                         current_mastery_level=0.0,
                         status="pending"
                     )
+                else:
+                    topics[tid].questions_allocated += 1
 
                 turn = TurnRecord(
                     turn_index=q["turn_index"],
@@ -251,6 +253,29 @@ class InterviewStateEngine:
             state.active_action = "NEW_QUESTION"
             logger.info("InterviewStateEngine: Session %s advanced to turn %d (%d remaining).", state.session_id, state.current_turn, state.remaining_questions)
 
+        return state
+
+    @classmethod
+    def apply_policy_decision(
+        cls,
+        state: InterviewState,
+        decision: Any,
+    ) -> InterviewState:
+        """
+        Applies a PolicyDecision to the state, updating current difficulty, target topic,
+        active action, and transparent explanation reasoning.
+        """
+        state.active_action = decision.action
+        state.action_reason = decision.reason
+        state.current_topic_id = decision.target_topic_id
+        state.current_topic_name = decision.target_topic_name
+        state.current_difficulty = decision.target_difficulty
+        if decision.is_terminal:
+            state.status = "completed"
+            state.is_completed = True
+            state.remaining_questions = 0
+            if not state.completed_at:
+                state.completed_at = cls.now_iso()
         return state
 
     @classmethod

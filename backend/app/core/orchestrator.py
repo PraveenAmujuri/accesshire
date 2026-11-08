@@ -196,4 +196,28 @@ class CentralOrchestrator:
         self.logger.info("CentralOrchestrator: Ending state early for session '%s'", state.session_id)
         return InterviewStateEngine.end_interview_early(state)
 
+    def evaluate_decision_policy(
+        self,
+        state: InterviewState,
+        plan: Optional[InterviewPlanSchema] = None,
+    ) -> Any:
+        """
+        Executes the Adaptive Decision Policy Agent to select the next interview action
+        and applies the decision to the state model.
+        """
+        from app.agents.decision_policy_agent import DecisionPolicyAgent
+        from app.services.state_engine import InterviewStateEngine
+
+        self.logger.info(
+            "CentralOrchestrator: Evaluating Decision Policy for session '%s' (turn %d, quota %d)",
+            state.session_id, state.current_turn, state.remaining_questions
+        )
+        decision = DecisionPolicyAgent.decide(state=state, plan=plan)
+        self.logger.info(
+            "CentralOrchestrator: Decision Policy chosen: %s (Reason: %s)",
+            decision.action, decision.reason
+        )
+        InterviewStateEngine.apply_policy_decision(state, decision)
+        return decision
+
 orchestrator = CentralOrchestrator()

@@ -70,15 +70,22 @@ class InterviewState(BaseModel):
     
     # Active policy action
     active_action: Literal[
-        "NEW_QUESTION",
-        "FOLLOW_UP",
+        "ASK_NEW_QUESTION",
+        "ASK_FOLLOW_UP",
         "INCREASE_DIFFICULTY",
         "DECREASE_DIFFICULTY",
         "CHANGE_TOPIC",
+        "CLARIFY_QUESTION",
+        "CONTINUE_INTERVIEW",
+        "END_INTERVIEW",
+        # Backward compatibility aliases
+        "NEW_QUESTION",
+        "FOLLOW_UP",
+        "CHANGE_TOPIC",
         "CLARIFICATION",
         "CONTINUE",
-        "END_INTERVIEW"
-    ] = "NEW_QUESTION"
+    ] = "ASK_NEW_QUESTION"
+    action_reason: Optional[str] = None
     
     accessibility: AccessibilityStateConfig = Field(default_factory=AccessibilityStateConfig)
     created_at: str
